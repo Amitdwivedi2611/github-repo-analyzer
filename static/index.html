@@ -1,0 +1,1321 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GitHub Repo Analyzer | Powered by Groq</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <!-- Chart.js for language distribution -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Marked.js for markdown rendering -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#f5f3ff',
+              100: '#ede9fe',
+              500: '#8b5cf6',
+              600: '#7c3aed',
+              700: '#6d28d9',
+              800: '#5b21b6',
+              900: '#4c1d95',
+            },
+            dark: {
+              bg: '#0B0F19',
+              card: '#111827',
+              border: '#1F2937',
+              hover: '#1E293B',
+              surface: '#0F172A'
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    /* Custom Scrollbars */
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: #0b0f19; }
+    ::-webkit-scrollbar-thumb { background: #2d3748; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #4a5568; }
+    .prose pre { background-color: #0f172a; padding: 1rem; border-radius: 0.5rem; overflow-x: auto; }
+    .prose code { color: #f472b6; font-size: 0.9em; }
+    .glassmorphism {
+      background: rgba(17, 24, 39, 0.75);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+  </style>
+</head>
+<body class="bg-[#0B0F19] text-gray-100 min-h-screen flex flex-col font-sans selection:bg-purple-600 selection:text-white">
+
+  <!-- Top Navigation Bar -->
+  <header class="border-b border-gray-800 bg-gray-900/60 sticky top-0 z-40 backdrop-blur-md">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <div class="h-10 w-10 rounded-xl bg-gradient-to-tr from-purple-600 to-indigo-500 flex items-center justify-center shadow-lg shadow-purple-500/25">
+          <i class="fa-brands fa-github text-xl text-white"></i>
+        </div>
+        <div>
+          <span class="font-bold text-lg tracking-tight bg-gradient-to-r from-white via-gray-200 to-purple-400 bg-clip-text text-transparent">
+            RepoScope AI
+          </span>
+          <span class="text-xs text-purple-400 block font-medium">Powered by Groq LPUs</span>
+        </div>
+      </div>
+
+      <div class="flex items-center space-x-3">
+        <!-- Model Selector in Navbar -->
+        <div class="hidden sm:flex items-center space-x-2 bg-gray-800/80 border border-gray-700/60 rounded-lg px-2.5 py-1.5 text-xs text-gray-300">
+          <i class="fa-solid fa-bolt text-amber-400"></i>
+          <span class="text-gray-400">Model:</span>
+          <select id="modelSelector" class="bg-transparent text-purple-300 font-semibold focus:outline-none cursor-pointer">
+            <option value="llama-3.3-70b-versatile" selected>Llama 3.3 70B (Versatile)</option>
+            <option value="llama-3.1-8b-instant">Llama 3.1 8B (Instant)</option>
+            <option value="mixtral-8x7b-32768">Mixtral 8x7B (32k)</option>
+          </select>
+        </div>
+
+        <!-- API Key Status / Settings Button -->
+        <button id="openSettingsBtn" onclick="toggleSettingsModal(true)" class="flex items-center space-x-2 px-3 py-1.5 rounded-lg border border-gray-700 hover:border-purple-500 bg-gray-800 hover:bg-gray-700/80 transition text-sm">
+          <i id="keyStatusIcon" class="fa-solid fa-key text-amber-400"></i>
+          <span id="keyStatusText" class="font-medium text-xs">Configure Groq Key</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="flex-grow max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
+
+    <!-- Hero & Search Section -->
+    <div class="text-center max-w-3xl mx-auto mb-10 pt-4">
+      <div class="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-purple-950/60 border border-purple-700/40 text-purple-300 text-xs font-medium mb-4">
+        <i class="fa-solid fa-microchip"></i>
+        <span>High-speed repo intelligence in seconds with Groq</span>
+      </div>
+      <h1 class="text-3xl sm:text-5xl font-extrabold tracking-tight mb-4">
+        Deep Dive Any <span class="bg-gradient-to-r from-purple-400 to-indigo-400 bg-clip-text text-transparent">GitHub Repo</span>
+      </h1>
+      <p class="text-gray-400 text-sm sm:text-base mb-8">
+        Instant architectural blueprint, code health & security audit, dependency mapping, and interactive Q&A powered by Groq's free API.
+      </p>
+
+      <!-- Search Input Box -->
+      <form id="analyzeForm" onsubmit="handleAnalyzeSubmit(event)" class="relative mb-4">
+        <div class="relative flex items-center">
+          <div class="absolute left-4 text-gray-400 pointer-events-none">
+            <i class="fa-brands fa-github text-xl"></i>
+          </div>
+          <input
+            type="text"
+            id="repoInput"
+            required
+            placeholder="e.g. pallets/flask or https://github.com/fastapi/fastapi"
+            class="w-full pl-12 pr-36 py-4 bg-gray-900/90 border-2 border-gray-700 focus:border-purple-500 rounded-2xl text-white placeholder-gray-500 text-base shadow-2xl focus:outline-none transition"
+          />
+          <button
+            type="submit"
+            id="submitBtn"
+            class="absolute right-2 px-5 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-medium rounded-xl text-sm transition shadow-lg shadow-purple-500/25 flex items-center space-x-2"
+          >
+            <i class="fa-solid fa-wand-magic-sparkles"></i>
+            <span>Analyze</span>
+          </button>
+        </div>
+      </form>
+
+      <!-- Sample Repositories Chips -->
+      <div class="flex flex-wrap items-center justify-center gap-2 text-xs text-gray-400">
+        <span class="text-gray-500">Quick Samples:</span>
+        <button onclick="setSampleRepo('pallets/flask')" class="px-2.5 py-1 bg-gray-800/80 hover:bg-gray-700 rounded-md border border-gray-700 transition">pallets/flask</button>
+        <button onclick="setSampleRepo('fastapi/fastapi')" class="px-2.5 py-1 bg-gray-800/80 hover:bg-gray-700 rounded-md border border-gray-700 transition">fastapi/fastapi</button>
+        <button onclick="setSampleRepo('expressjs/express')" class="px-2.5 py-1 bg-gray-800/80 hover:bg-gray-700 rounded-md border border-gray-700 transition">expressjs/express</button>
+        <button onclick="setSampleRepo('tailwindlabs/tailwindcss')" class="px-2.5 py-1 bg-gray-800/80 hover:bg-gray-700 rounded-md border border-gray-700 transition">tailwindlabs/tailwindcss</button>
+        <button onclick="setSampleRepo('colinhacks/zod')" class="px-2.5 py-1 bg-gray-800/80 hover:bg-gray-700 rounded-md border border-gray-700 transition">colinhacks/zod</button>
+      </div>
+    </div>
+
+    <!-- Multi-stage Loading Banner (Hidden by default) -->
+    <div id="loadingBanner" class="hidden max-w-2xl mx-auto my-12 p-6 glassmorphism rounded-2xl text-center">
+      <div class="inline-block p-4 rounded-full bg-purple-900/40 text-purple-400 mb-4 animate-bounce">
+        <i class="fa-solid fa-spinner fa-spin text-3xl"></i>
+      </div>
+      <h3 id="loadingStepTitle" class="text-xl font-bold text-white mb-2">Fetching GitHub Repository...</h3>
+      <p id="loadingStepDesc" class="text-sm text-gray-400 mb-6">Inspecting code structure, manifests, and documentation</p>
+
+      <!-- Progress Indicators -->
+      <div class="grid grid-cols-3 gap-2 text-xs font-medium">
+        <div id="stepIndicator1" class="py-2 px-3 rounded-lg bg-purple-900/60 text-purple-300 border border-purple-600/50 flex items-center justify-center space-x-1.5">
+          <i class="fa-solid fa-cloud-arrow-down"></i>
+          <span>1. GitHub Data</span>
+        </div>
+        <div id="stepIndicator2" class="py-2 px-3 rounded-lg bg-gray-800 text-gray-500 border border-gray-700 flex items-center justify-center space-x-1.5">
+          <i class="fa-solid fa-brain"></i>
+          <span>2. Groq AI Inference</span>
+        </div>
+        <div id="stepIndicator3" class="py-2 px-3 rounded-lg bg-gray-800 text-gray-500 border border-gray-700 flex items-center justify-center space-x-1.5">
+          <i class="fa-solid fa-chart-pie"></i>
+          <span>3. Report Render</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Error Banner -->
+    <div id="errorBanner" class="hidden max-w-3xl mx-auto my-6 p-4 bg-red-950/60 border border-red-700/60 rounded-xl flex items-start space-x-3 text-red-200">
+      <i class="fa-solid fa-triangle-exclamation text-red-400 text-lg mt-0.5"></i>
+      <div class="flex-grow">
+        <h4 class="font-bold text-sm" id="errorTitle">Analysis Error</h4>
+        <p class="text-xs text-red-300 mt-1" id="errorMessage"></p>
+      </div>
+      <button onclick="document.getElementById('errorBanner').classList.add('hidden')" class="text-gray-400 hover:text-white">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+
+    <!-- Analysis Results Section (Hidden until populated) -->
+    <div id="resultsContainer" class="hidden space-y-8">
+
+      <!-- Repository Header Card -->
+      <div class="glassmorphism rounded-2xl p-6 sm:p-8">
+        <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+          <div class="flex items-start space-x-4">
+            <img id="repoAvatar" src="" alt="Avatar" class="w-16 h-16 rounded-2xl border-2 border-purple-500/30 bg-gray-800 flex-shrink-0">
+            <div>
+              <div class="flex items-center space-x-3 flex-wrap">
+                <h2 id="repoFullName" class="text-2xl font-extrabold text-white tracking-tight"></h2>
+                <a id="repoGithubLink" href="#" target="_blank" class="text-gray-400 hover:text-white transition">
+                  <i class="fa-solid fa-arrow-up-right-from-square text-sm"></i>
+                </a>
+                <span id="projectTypeBadge" class="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-900/60 text-indigo-300 border border-indigo-700/50"></span>
+              </div>
+              <p id="repoDescription" class="text-gray-300 text-sm mt-2 max-w-3xl"></p>
+              <div id="repoTopics" class="flex flex-wrap gap-1.5 mt-3"></div>
+            </div>
+          </div>
+
+          <!-- Health Score Circular Card -->
+          <div class="flex items-center space-x-4 bg-gray-900/80 p-4 rounded-xl border border-gray-800 flex-shrink-0">
+            <div class="relative w-16 h-16 flex items-center justify-center">
+              <svg class="w-16 h-16 transform -rotate-90">
+                <circle cx="32" cy="32" r="28" stroke="#1f2937" stroke-width="5" fill="none"/>
+                <circle id="healthScoreCircle" cx="32" cy="32" r="28" stroke="#10b981" stroke-width="5" fill="none"
+                  stroke-dasharray="175.9" stroke-dashoffset="30" stroke-linecap="round" class="transition-all duration-1000"/>
+              </svg>
+              <span id="healthScoreValue" class="absolute font-black text-lg text-white"></span>
+            </div>
+            <div>
+              <div class="text-xs text-gray-400 uppercase tracking-wider font-semibold">Health Score</div>
+              <div id="healthVerdict" class="text-sm font-bold text-emerald-400"></div>
+              <div class="text-[11px] text-gray-400 mt-0.5" id="maintenanceStatus"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Key Quick Metrics Bar -->
+        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3 mt-6 pt-6 border-t border-gray-800/80 text-center">
+          <div class="bg-gray-800/40 p-2.5 rounded-lg border border-gray-800">
+            <div class="text-gray-400 text-xs flex items-center justify-center gap-1.5"><i class="fa-regular fa-star text-amber-400"></i> Stars</div>
+            <div id="statStars" class="text-base font-bold text-white mt-1">0</div>
+          </div>
+          <div class="bg-gray-800/40 p-2.5 rounded-lg border border-gray-800">
+            <div class="text-gray-400 text-xs flex items-center justify-center gap-1.5"><i class="fa-solid fa-code-fork text-blue-400"></i> Forks</div>
+            <div id="statForks" class="text-base font-bold text-white mt-1">0</div>
+          </div>
+          <div class="bg-gray-800/40 p-2.5 rounded-lg border border-gray-800">
+            <div class="text-gray-400 text-xs flex items-center justify-center gap-1.5"><i class="fa-regular fa-circle-dot text-red-400"></i> Issues</div>
+            <div id="statIssues" class="text-base font-bold text-white mt-1">0</div>
+          </div>
+          <div class="bg-gray-800/40 p-2.5 rounded-lg border border-gray-800">
+            <div class="text-gray-400 text-xs flex items-center justify-center gap-1.5"><i class="fa-solid fa-code text-purple-400"></i> Language</div>
+            <div id="statLanguage" class="text-base font-bold text-white mt-1">None</div>
+          </div>
+          <div class="bg-gray-800/40 p-2.5 rounded-lg border border-gray-800">
+            <div class="text-gray-400 text-xs flex items-center justify-center gap-1.5"><i class="fa-solid fa-scale-balanced text-emerald-400"></i> License</div>
+            <div id="statLicense" class="text-base font-bold text-white mt-1">None</div>
+          </div>
+          <div class="bg-gray-800/40 p-2.5 rounded-lg border border-gray-800">
+            <div class="text-gray-400 text-xs flex items-center justify-center gap-1.5"><i class="fa-solid fa-hard-drive text-indigo-400"></i> Size</div>
+            <div id="statSize" class="text-base font-bold text-white mt-1">0 KB</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Navigation Tabs -->
+      <div class="border-b border-gray-800 flex overflow-x-auto space-x-2 text-sm font-medium">
+        <button onclick="switchTab('overview')" id="tabBtn-overview" class="tab-btn px-4 py-3 border-b-2 border-purple-500 text-purple-400 flex items-center space-x-2">
+          <i class="fa-solid fa-chart-pie"></i>
+          <span>Overview & Stack</span>
+        </button>
+        <button onclick="switchTab('architecture')" id="tabBtn-architecture" class="tab-btn px-4 py-3 border-b-2 border-transparent text-gray-400 hover:text-gray-200 flex items-center space-x-2">
+          <i class="fa-solid fa-sitemap"></i>
+          <span>Architecture & Files</span>
+        </button>
+        <button onclick="switchTab('quality')" id="tabBtn-quality" class="tab-btn px-4 py-3 border-b-2 border-transparent text-gray-400 hover:text-gray-200 flex items-center space-x-2">
+          <i class="fa-solid fa-shield-halved"></i>
+          <span>Quality & Security</span>
+        </button>
+        <button onclick="switchTab('setup')" id="tabBtn-setup" class="tab-btn px-4 py-3 border-b-2 border-transparent text-gray-400 hover:text-gray-200 flex items-center space-x-2">
+          <i class="fa-solid fa-terminal"></i>
+          <span>Setup & Quickstart</span>
+        </button>
+        <button onclick="switchTab('chat')" id="tabBtn-chat" class="tab-btn px-4 py-3 border-b-2 border-transparent text-gray-400 hover:text-gray-200 flex items-center space-x-2">
+          <i class="fa-solid fa-comments text-amber-400"></i>
+          <span>Ask the Repo (AI Chat)</span>
+        </button>
+        <button onclick="switchTab('export')" id="tabBtn-export" class="tab-btn px-4 py-3 border-b-2 border-transparent text-gray-400 hover:text-gray-200 flex items-center space-x-2">
+          <i class="fa-solid fa-download"></i>
+          <span>Export Report</span>
+        </button>
+      </div>
+
+      <!-- TAB 1: Overview & Stack -->
+      <div id="tabContent-overview" class="tab-pane space-y-6">
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+          <!-- Left Column (Executive Summary & Key Features) -->
+          <div class="lg:col-span-2 space-y-6">
+            <!-- Executive Summary Card -->
+            <div class="glassmorphism rounded-2xl p-6">
+              <h3 class="text-lg font-bold text-white mb-3 flex items-center gap-2">
+                <i class="fa-solid fa-bullseye text-purple-400"></i>
+                Executive Summary
+              </h3>
+              <p id="executiveSummary" class="text-gray-300 leading-relaxed text-sm"></p>
+            </div>
+
+            <!-- Tech Stack Detection -->
+            <div class="glassmorphism rounded-2xl p-6">
+              <h3 class="text-lg font-bold text-white mb-3 flex items-center gap-2">
+                <i class="fa-solid fa-layer-group text-indigo-400"></i>
+                Detected Tech Stack & Libraries
+              </h3>
+              <div id="techStackContainer" class="flex flex-wrap gap-2"></div>
+            </div>
+
+            <!-- Key Features -->
+            <div class="glassmorphism rounded-2xl p-6">
+              <h3 class="text-lg font-bold text-white mb-3 flex items-center gap-2">
+                <i class="fa-solid fa-star text-amber-400"></i>
+                Core Capabilities & Highlights
+              </h3>
+              <ul id="keyFeaturesList" class="space-y-2.5 text-sm text-gray-300"></ul>
+            </div>
+          </div>
+
+          <!-- Right Column (Languages Chart & Manifests) -->
+          <div class="space-y-6">
+            <!-- Languages Doughnut Chart -->
+            <div class="glassmorphism rounded-2xl p-6">
+              <h3 class="text-base font-bold text-white mb-4 flex items-center gap-2">
+                <i class="fa-solid fa-pie-chart text-emerald-400"></i>
+                Languages Breakdown
+              </h3>
+              <div class="h-48 relative flex items-center justify-center">
+                <canvas id="languageChart"></canvas>
+              </div>
+              <div id="languageList" class="mt-4 space-y-1.5 text-xs"></div>
+            </div>
+
+            <!-- Manifests & CI/CD Status -->
+            <div class="glassmorphism rounded-2xl p-6">
+              <h3 class="text-base font-bold text-white mb-3 flex items-center gap-2">
+                <i class="fa-solid fa-gears text-blue-400"></i>
+                Configuration & CI/CD
+              </h3>
+              <div class="space-y-3 text-xs">
+                <div>
+                  <span class="text-gray-400 block mb-1">Detected Manifests:</span>
+                  <div id="manifestChips" class="flex flex-wrap gap-1.5"></div>
+                </div>
+                <div class="pt-2 border-t border-gray-800">
+                  <span class="text-gray-400 block mb-1">GitHub Actions:</span>
+                  <div id="ciWorkflowsStatus" class="text-gray-300 font-medium"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- TAB 2: Architecture & File Structure -->
+      <div id="tabContent-architecture" class="tab-pane hidden space-y-6">
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <!-- Architecture Description -->
+          <div class="glassmorphism rounded-2xl p-6 space-y-6">
+            <div>
+              <h3 class="text-lg font-bold text-white mb-3 flex items-center gap-2">
+                <i class="fa-solid fa-cubes text-purple-400"></i>
+                Architectural Blueprint
+              </h3>
+              <p id="archOverview" class="text-sm text-gray-300 leading-relaxed"></p>
+            </div>
+
+            <div>
+              <h4 class="text-sm font-semibold text-gray-200 mb-2">Design Patterns & Paradigms</h4>
+              <div id="designPatternsList" class="flex flex-wrap gap-2"></div>
+            </div>
+
+            <div>
+              <h4 class="text-sm font-semibold text-gray-200 mb-2">Key Entry Points</h4>
+              <div id="entryPointsList" class="space-y-1.5 text-xs font-mono"></div>
+            </div>
+          </div>
+
+          <!-- File Tree Explorer -->
+          <div class="glassmorphism rounded-2xl p-6">
+            <div class="flex items-center justify-between mb-4">
+              <h3 class="text-lg font-bold text-white flex items-center gap-2">
+                <i class="fa-solid fa-folder-tree text-indigo-400"></i>
+                Repository File Tree
+              </h3>
+              <span id="treeStatsBadge" class="text-xs text-gray-400 font-mono"></span>
+            </div>
+            <!-- Search Filter for tree -->
+            <input
+              type="text"
+              id="treeFilterInput"
+              oninput="filterTree(this.value)"
+              placeholder="Filter files (e.g. src/, .json, test)..."
+              class="w-full mb-3 px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500"
+            />
+            <div id="fileTreeContainer" class="bg-gray-950 p-3 rounded-xl border border-gray-800 max-h-96 overflow-y-auto text-xs font-mono text-gray-300 space-y-1"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 3: Quality & Security -->
+      <div id="tabContent-quality" class="tab-pane hidden space-y-6">
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+          <!-- Strengths Card -->
+          <div class="glassmorphism rounded-2xl p-6 border-l-4 border-l-emerald-500">
+            <h3 class="text-lg font-bold text-white mb-3 flex items-center gap-2">
+              <i class="fa-solid fa-circle-check text-emerald-400"></i>
+              Key Strengths & High Points
+            </h3>
+            <ul id="strengthsList" class="space-y-2 text-sm text-gray-300"></ul>
+          </div>
+
+          <!-- Improvement Areas Card -->
+          <div class="glassmorphism rounded-2xl p-6 border-l-4 border-l-amber-500">
+            <h3 class="text-lg font-bold text-white mb-3 flex items-center gap-2">
+              <i class="fa-solid fa-triangle-exclamation text-amber-400"></i>
+              Areas for Improvement & Risks
+            </h3>
+            <ul id="weaknessesList" class="space-y-2 text-sm text-gray-300"></ul>
+          </div>
+
+          <!-- Testing & Docs Quality -->
+          <div class="glassmorphism rounded-2xl p-6">
+            <h3 class="text-lg font-bold text-white mb-3 flex items-center gap-2">
+              <i class="fa-solid fa-vial-circle-check text-blue-400"></i>
+              Testing & Verification
+            </h3>
+            <p id="testingObserved" class="text-sm text-gray-300 leading-relaxed"></p>
+            <div class="mt-4 pt-4 border-t border-gray-800">
+              <div class="text-xs text-gray-400 mb-1">Documentation Rating:</div>
+              <div id="docsRatingBadge" class="text-sm font-semibold text-purple-300"></div>
+            </div>
+          </div>
+
+          <!-- Security Considerations -->
+          <div class="glassmorphism rounded-2xl p-6">
+            <h3 class="text-lg font-bold text-white mb-3 flex items-center gap-2">
+              <i class="fa-solid fa-lock text-red-400"></i>
+              Security & Maintenance Checklist
+            </h3>
+            <ul id="securityList" class="space-y-2 text-sm text-gray-300"></ul>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- TAB 4: Setup & Quickstart -->
+      <div id="tabContent-setup" class="tab-pane hidden space-y-6">
+        <div class="glassmorphism rounded-2xl p-6 space-y-6">
+          <div>
+            <h3 class="text-lg font-bold text-white mb-3 flex items-center gap-2">
+              <i class="fa-solid fa-list-check text-purple-400"></i>
+              Prerequisites
+            </h3>
+            <ul id="prereqList" class="flex flex-wrap gap-2"></ul>
+          </div>
+
+          <div>
+            <h3 class="text-lg font-bold text-white mb-3 flex items-center gap-2">
+              <i class="fa-solid fa-download text-indigo-400"></i>
+              Installation & Dependencies
+            </h3>
+            <div id="installStepsContainer" class="space-y-2"></div>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="bg-gray-900/80 p-4 rounded-xl border border-gray-800">
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-xs font-semibold text-gray-400 uppercase">Run / Start Command</span>
+                <button onclick="copyToClipboard(document.getElementById('runCmdCode').innerText)" class="text-xs text-purple-400 hover:text-purple-300">
+                  <i class="fa-regular fa-copy"></i> Copy
+                </button>
+              </div>
+              <pre class="text-xs font-mono bg-gray-950 p-2.5 rounded text-emerald-400 overflow-x-auto"><code id="runCmdCode"></code></pre>
+            </div>
+
+            <div class="bg-gray-900/80 p-4 rounded-xl border border-gray-800">
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-xs font-semibold text-gray-400 uppercase">Test Command</span>
+                <button onclick="copyToClipboard(document.getElementById('testCmdCode').innerText)" class="text-xs text-purple-400 hover:text-purple-300">
+                  <i class="fa-regular fa-copy"></i> Copy
+                </button>
+              </div>
+              <pre class="text-xs font-mono bg-gray-950 p-2.5 rounded text-blue-400 overflow-x-auto"><code id="testCmdCode"></code></pre>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 5: Ask the Repo (Interactive Chat) -->
+      <div id="tabContent-chat" class="tab-pane hidden space-y-6">
+        <div class="glassmorphism rounded-2xl p-6 flex flex-col h-[650px]">
+          <!-- Chat Header -->
+          <div class="pb-4 border-b border-gray-800 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+              <div class="h-9 w-9 rounded-lg bg-purple-600/20 text-purple-400 flex items-center justify-center border border-purple-500/30">
+                <i class="fa-solid fa-comments"></i>
+              </div>
+              <div>
+                <h3 class="font-bold text-white text-sm">Ask the Repository</h3>
+                <span class="text-[11px] text-gray-400">Ask questions about architecture, algorithms, dependencies, or contributing</span>
+              </div>
+            </div>
+            <button onclick="clearChat()" class="text-xs text-gray-400 hover:text-gray-200">
+              <i class="fa-solid fa-trash-can mr-1"></i> Clear
+            </button>
+          </div>
+
+          <!-- Suggested Query Pills -->
+          <div class="py-3 flex flex-wrap gap-1.5 text-xs border-b border-gray-800/60">
+            <span class="text-gray-500 self-center">Try asking:</span>
+            <button onclick="sendQuickPrompt('Where are the primary entry points and how is the project initialized?')" class="px-2.5 py-1 bg-gray-800/80 hover:bg-gray-700 text-gray-300 rounded-full border border-gray-700 transition">Entry points & init</button>
+            <button onclick="sendQuickPrompt('How does error handling and validation work in this repo?')" class="px-2.5 py-1 bg-gray-800/80 hover:bg-gray-700 text-gray-300 rounded-full border border-gray-700 transition">Error handling</button>
+            <button onclick="sendQuickPrompt('What external services, APIs, or databases are required?')" class="px-2.5 py-1 bg-gray-800/80 hover:bg-gray-700 text-gray-300 rounded-full border border-gray-700 transition">External services</button>
+            <button onclick="sendQuickPrompt('Suggest 3 ways to improve or refactor this codebase.')" class="px-2.5 py-1 bg-gray-800/80 hover:bg-gray-700 text-gray-300 rounded-full border border-gray-700 transition">Refactoring ideas</button>
+          </div>
+
+          <!-- Message History -->
+          <div id="chatMessages" class="flex-grow overflow-y-auto py-4 space-y-4 text-sm pr-2">
+            <div class="flex items-start space-x-3">
+              <div class="h-8 w-8 rounded-full bg-purple-600/30 flex items-center justify-center text-purple-400 text-xs font-bold flex-shrink-0">
+                AI
+              </div>
+              <div class="bg-gray-800/80 border border-gray-700/60 rounded-2xl p-3.5 max-w-2xl text-gray-200 text-xs leading-relaxed">
+                Hello! I've loaded the entire repository context, file tree, and configuration manifests into Groq's high-speed memory. What would you like to know about this repository?
+              </div>
+            </div>
+          </div>
+
+          <!-- Chat Input -->
+          <form onsubmit="handleChatSubmit(event)" class="pt-3 border-t border-gray-800 flex items-center gap-2">
+            <input
+              type="text"
+              id="chatInput"
+              placeholder="Ask anything about the repository..."
+              class="flex-grow px-4 py-3 bg-gray-900 border border-gray-700 focus:border-purple-500 rounded-xl text-sm text-white placeholder-gray-500 focus:outline-none"
+            />
+            <button
+              type="submit"
+              id="chatSendBtn"
+              class="px-5 py-3 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-sm font-medium transition flex items-center space-x-1.5"
+            >
+              <span>Send</span>
+              <i class="fa-solid fa-paper-plane text-xs"></i>
+            </button>
+          </form>
+        </div>
+      </div>
+
+      <!-- TAB 6: Export Report -->
+      <div id="tabContent-export" class="tab-pane hidden space-y-6">
+        <div class="glassmorphism rounded-2xl p-6">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-gray-800 gap-4">
+            <div>
+              <h3 class="text-lg font-bold text-white">Export & Share Analysis</h3>
+              <p class="text-xs text-gray-400 mt-0.5">Download full architectural and quality audit in Markdown or JSON</p>
+            </div>
+            <div class="flex items-center space-x-2">
+              <button onclick="copyMarkdownReport()" class="px-3.5 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-xs font-semibold text-gray-200 border border-gray-700 transition flex items-center gap-1.5">
+                <i class="fa-regular fa-copy"></i> Copy Markdown
+              </button>
+              <button onclick="downloadMarkdownReport()" class="px-3.5 py-2 bg-purple-600 hover:bg-purple-500 rounded-lg text-xs font-semibold text-white transition flex items-center gap-1.5 shadow-md shadow-purple-600/20">
+                <i class="fa-solid fa-file-arrow-down"></i> Download .md
+              </button>
+              <button onclick="downloadJsonReport()" class="px-3.5 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-xs font-semibold text-gray-200 border border-gray-700 transition flex items-center gap-1.5">
+                <i class="fa-solid fa-code"></i> Download .json
+              </button>
+            </div>
+          </div>
+
+          <div class="mt-4">
+            <span class="text-xs font-semibold text-gray-400 uppercase mb-2 block">Markdown Preview</span>
+            <textarea id="markdownReportText" readonly class="w-full h-96 bg-gray-950 p-4 rounded-xl border border-gray-800 text-xs font-mono text-gray-300 focus:outline-none resize-none"></textarea>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+  </main>
+
+  <!-- Settings Modal for Groq API Key and GitHub Token -->
+  <div id="settingsModal" class="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+    <div class="glassmorphism rounded-2xl max-w-lg w-full p-6 border border-gray-700 shadow-2xl">
+      <div class="flex items-center justify-between pb-3 border-b border-gray-800">
+        <h3 class="text-lg font-bold text-white flex items-center gap-2">
+          <i class="fa-solid fa-gear text-purple-400"></i>
+          API & Credentials Settings
+        </h3>
+        <button onclick="toggleSettingsModal(false)" class="text-gray-400 hover:text-white">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <div class="py-4 space-y-4">
+        <!-- Groq Key -->
+        <div>
+          <label class="block text-xs font-semibold text-gray-300 mb-1 flex items-center justify-between">
+            <span>Groq API Key (Free) <span class="text-red-400">*</span></span>
+            <a href="https://console.groq.com/keys" target="_blank" class="text-purple-400 hover:underline text-[11px]">
+              Get free key &rarr;
+            </a>
+          </label>
+          <div class="relative">
+            <input
+              type="password"
+              id="groqApiKeyInput"
+              placeholder="gsk_..."
+              class="w-full px-3 py-2.5 bg-gray-900 border border-gray-700 rounded-lg text-xs text-white placeholder-gray-500 focus:outline-none focus:border-purple-500 font-mono"
+            />
+            <button type="button" onclick="togglePasswordVisibility('groqApiKeyInput')" class="absolute right-3 top-2.5 text-gray-400 hover:text-white text-xs">
+              <i class="fa-regular fa-eye"></i>
+            </button>
+          </div>
+          <p class="text-[11px] text-gray-500 mt-1">Saved securely in your browser's localStorage. Never shared or sent to any 3rd party.</p>
+        </div>
+
+        <!-- GitHub Personal Access Token -->
+        <div>
+          <label class="block text-xs font-semibold text-gray-300 mb-1 flex items-center justify-between">
+            <span>GitHub Token (Optional)</span>
+            <a href="https://github.com/settings/tokens" target="_blank" class="text-purple-400 hover:underline text-[11px]">
+              Generate token &rarr;
+            </a>
+          </label>
+          <div class="relative">
+            <input
+              type="password"
+              id="githubTokenInput"
+              placeholder="ghp_... (Optional, boosts rate limits to 5,000 req/hr)"
+              class="w-full px-3 py-2.5 bg-gray-900 border border-gray-700 rounded-lg text-xs text-white placeholder-gray-500 focus:outline-none focus:border-purple-500 font-mono"
+            />
+            <button type="button" onclick="togglePasswordVisibility('githubTokenInput')" class="absolute right-3 top-2.5 text-gray-400 hover:text-white text-xs">
+              <i class="fa-regular fa-eye"></i>
+            </button>
+          </div>
+          <p class="text-[11px] text-gray-500 mt-1">Required only if you analyze many repos rapidly or hit GitHub's 60 req/hr IP limit.</p>
+        </div>
+      </div>
+
+      <div class="pt-3 border-t border-gray-800 flex justify-end space-x-2">
+        <button onclick="toggleSettingsModal(false)" class="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg text-xs font-semibold transition">
+          Cancel
+        </button>
+        <button onclick="saveSettings()" class="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-xs font-semibold transition">
+          Save Settings
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <footer class="border-t border-gray-800/60 py-6 text-center text-xs text-gray-500 mt-auto">
+    GitHub Repo Analyzer &copy; 2026 &bull; Supercharged by <a href="https://groq.com" target="_blank" class="text-purple-400 hover:underline font-medium">Groq LPUs</a>
+  </footer>
+
+  <!-- Application Logic -->
+  <script>
+    // State
+    let currentAnalysisData = null;
+    let chatHistory = [];
+    let languageChartInstance = null;
+    let allTreeFiles = [];
+
+    // Init on page load
+    document.addEventListener("DOMContentLoaded", () => {
+      loadSettings();
+      checkBackendHealth();
+    });
+
+    function loadSettings() {
+      const savedGroqKey = localStorage.getItem("groq_api_key");
+      const savedGithubToken = localStorage.getItem("github_token");
+      const savedModel = localStorage.getItem("groq_model");
+
+      if (savedGroqKey) {
+        document.getElementById("groqApiKeyInput").value = savedGroqKey;
+        updateKeyStatus(true);
+      }
+      if (savedGithubToken) {
+        document.getElementById("githubTokenInput").value = savedGithubToken;
+      }
+      if (savedModel) {
+        document.getElementById("modelSelector").value = savedModel;
+      }
+    }
+
+    async function checkBackendHealth() {
+      try {
+        const res = await fetch("/api/health");
+        const data = await res.json();
+        if (data.has_groq_env_key && !localStorage.getItem("groq_api_key")) {
+          updateKeyStatus(true, "Configured on Server (.env)");
+        }
+      } catch (e) {
+        console.error("Health check error", e);
+      }
+    }
+
+    function updateKeyStatus(configured, customText) {
+      const icon = document.getElementById("keyStatusIcon");
+      const text = document.getElementById("keyStatusText");
+      if (configured) {
+        icon.className = "fa-solid fa-check-circle text-emerald-400";
+        text.innerText = customText || "Groq Key Ready";
+        text.className = "font-medium text-xs text-emerald-400";
+      } else {
+        icon.className = "fa-solid fa-key text-amber-400";
+        text.innerText = "Configure Groq Key";
+        text.className = "font-medium text-xs text-amber-300";
+      }
+    }
+
+    function toggleSettingsModal(show) {
+      const modal = document.getElementById("settingsModal");
+      if (show) modal.classList.remove("hidden");
+      else modal.classList.add("hidden");
+    }
+
+    function togglePasswordVisibility(inputId) {
+      const el = document.getElementById(inputId);
+      el.type = el.type === "password" ? "text" : "password";
+    }
+
+    function saveSettings() {
+      const groqKey = document.getElementById("groqApiKeyInput").value.trim();
+      const ghToken = document.getElementById("githubTokenInput").value.trim();
+      const model = document.getElementById("modelSelector").value;
+
+      if (groqKey) {
+        localStorage.setItem("groq_api_key", groqKey);
+        updateKeyStatus(true);
+      } else {
+        localStorage.removeItem("groq_api_key");
+        checkBackendHealth();
+      }
+
+      if (ghToken) {
+        localStorage.setItem("github_token", ghToken);
+      } else {
+        localStorage.removeItem("github_token");
+      }
+
+      localStorage.setItem("groq_model", model);
+      toggleSettingsModal(false);
+    }
+
+    function setSampleRepo(repoName) {
+      document.getElementById("repoInput").value = repoName;
+      document.getElementById("analyzeForm").dispatchEvent(new Event("submit"));
+    }
+
+    async function handleAnalyzeSubmit(e) {
+      e.preventDefault();
+      const repoUrl = document.getElementById("repoInput").value.trim();
+      if (!repoUrl) return;
+
+      const groqKey = localStorage.getItem("groq_api_key") || "";
+      const ghToken = localStorage.getItem("github_token") || "";
+      const model = document.getElementById("modelSelector").value;
+
+      // Hide results, show loading
+      document.getElementById("errorBanner").classList.add("hidden");
+      document.getElementById("resultsContainer").classList.add("hidden");
+      document.getElementById("loadingBanner").classList.remove("hidden");
+      document.getElementById("submitBtn").disabled = true;
+
+      // Step 1 UI
+      setLoadingStage(1, "Fetching GitHub Repository Data...", "Downloading commits, manifests, and file tree structure");
+
+      try {
+        // Change to step 2 after brief delay
+        setTimeout(() => {
+          setLoadingStage(2, "Running Groq AI Inference...", `Deep architectural reasoning via ${model}`);
+        }, 1200);
+
+        const response = await fetch("/api/analyze", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            repo_url: repoUrl,
+            groq_api_key: groqKey,
+            github_token: ghToken,
+            model: model
+          })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.detail || "Failed to analyze repository.");
+        }
+
+        setLoadingStage(3, "Rendering Report...", "Generating visualization and insights");
+
+        setTimeout(() => {
+          document.getElementById("loadingBanner").classList.add("hidden");
+          renderResults(data);
+          document.getElementById("submitBtn").disabled = false;
+        }, 500);
+
+      } catch (err) {
+        document.getElementById("loadingBanner").classList.add("hidden");
+        document.getElementById("submitBtn").disabled = false;
+        showError("Analysis Failed", err.message);
+        if (err.message.includes("Groq API Key")) {
+          toggleSettingsModal(true);
+        }
+      }
+    }
+
+    function setLoadingStage(step, title, desc) {
+      document.getElementById("loadingStepTitle").innerText = title;
+      document.getElementById("loadingStepDesc").innerText = desc;
+      const s1 = document.getElementById("stepIndicator1");
+      const s2 = document.getElementById("stepIndicator2");
+      const s3 = document.getElementById("stepIndicator3");
+
+      [s1, s2, s3].forEach(s => {
+        s.className = "py-2 px-3 rounded-lg bg-gray-800 text-gray-500 border border-gray-700 flex items-center justify-center space-x-1.5";
+      });
+
+      if (step >= 1) s1.className = "py-2 px-3 rounded-lg bg-purple-900/60 text-purple-300 border border-purple-600/50 flex items-center justify-center space-x-1.5";
+      if (step >= 2) s2.className = "py-2 px-3 rounded-lg bg-purple-900/60 text-purple-300 border border-purple-600/50 flex items-center justify-center space-x-1.5";
+      if (step >= 3) s3.className = "py-2 px-3 rounded-lg bg-purple-900/60 text-purple-300 border border-purple-600/50 flex items-center justify-center space-x-1.5";
+    }
+
+    function showError(title, message) {
+      document.getElementById("errorTitle").innerText = title;
+      document.getElementById("errorMessage").innerText = message;
+      document.getElementById("errorBanner").classList.remove("hidden");
+    }
+
+    function renderResults(data) {
+      currentAnalysisData = data;
+      const info = data.repo_info;
+      const analysis = data.analysis;
+
+      // Header info
+      document.getElementById("repoAvatar").src = info.owner_avatar || "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png";
+      document.getElementById("repoFullName").innerText = info.full_name;
+      document.getElementById("repoGithubLink").href = info.html_url;
+      document.getElementById("repoDescription").innerText = info.description;
+      document.getElementById("projectTypeBadge").innerText = analysis.project_type || "Software Project";
+
+      // Health Score & Gauge
+      const score = analysis.quality_assessment?.health_score || 85;
+      document.getElementById("healthScoreValue").innerText = score;
+      document.getElementById("healthVerdict").innerText = analysis.quality_assessment?.health_verdict || "Good Code Quality";
+      document.getElementById("maintenanceStatus").innerText = analysis.security_and_maintenance?.maintenance_status || "Actively Maintained";
+
+      // SVG circle offset calculation (circumference = 175.9)
+      const offset = 175.9 - (175.9 * score / 100);
+      const circleEl = document.getElementById("healthScoreCircle");
+      circleEl.style.strokeDashoffset = offset;
+      if (score >= 80) circleEl.style.stroke = "#10b981";
+      else if (score >= 60) circleEl.style.stroke = "#f59e0b";
+      else circleEl.style.stroke = "#ef4444";
+
+      // Topics
+      const topicsContainer = document.getElementById("repoTopics");
+      topicsContainer.innerHTML = "";
+      (info.topics || []).slice(0, 8).forEach(topic => {
+        const badge = document.createElement("span");
+        badge.className = "px-2 py-0.5 rounded-md text-[11px] bg-gray-800 text-gray-300 border border-gray-700 font-mono";
+        badge.innerText = "#" + topic;
+        topicsContainer.appendChild(badge);
+      });
+
+      // Quick Stats
+      document.getElementById("statStars").innerText = Number(info.stars).toLocaleString();
+      document.getElementById("statForks").innerText = Number(info.forks).toLocaleString();
+      document.getElementById("statIssues").innerText = Number(info.open_issues).toLocaleString();
+      document.getElementById("statLanguage").innerText = info.language || "Unknown";
+      document.getElementById("statLicense").innerText = info.license || "None";
+      document.getElementById("statSize").innerText = (info.size_kb > 1024 ? (info.size_kb / 1024).toFixed(1) + " MB" : info.size_kb + " KB");
+
+      // TAB 1: Executive Summary & Features
+      document.getElementById("executiveSummary").innerText = analysis.executive_summary || info.description;
+
+      // Tech Stack
+      const stackContainer = document.getElementById("techStackContainer");
+      stackContainer.innerHTML = "";
+      (analysis.tech_stack || []).forEach(item => {
+        const el = document.createElement("span");
+        el.className = "px-3 py-1 rounded-lg text-xs font-semibold bg-purple-950/80 text-purple-300 border border-purple-700/60 shadow-sm";
+        el.innerText = item;
+        stackContainer.appendChild(el);
+      });
+
+      // Key Features
+      const featuresList = document.getElementById("keyFeaturesList");
+      featuresList.innerHTML = "";
+      (analysis.key_features || []).forEach(f => {
+        const li = document.createElement("li");
+        li.className = "flex items-start space-x-2";
+        li.innerHTML = `<i class="fa-solid fa-check text-purple-400 mt-1 text-xs"></i><span>${escapeHtml(f)}</span>`;
+        featuresList.appendChild(li);
+      });
+
+      // Render Language Chart
+      renderLanguageChart(data.languages);
+
+      // Manifests & CI
+      const manifestContainer = document.getElementById("manifestChips");
+      manifestContainer.innerHTML = "";
+      (data.manifests_detected || []).forEach(m => {
+        const span = document.createElement("span");
+        span.className = "px-2 py-0.5 rounded bg-gray-800 border border-gray-700 text-gray-300 font-mono";
+        span.innerText = m;
+        manifestContainer.appendChild(span);
+      });
+      document.getElementById("ciWorkflowsStatus").innerHTML = data.ci_summary.has_github_actions
+        ? `<span class="text-emerald-400"><i class="fa-solid fa-circle-check"></i> Active (${data.ci_summary.workflow_files.length} workflow files)</span>`
+        : `<span class="text-gray-500"><i class="fa-solid fa-circle-xmark"></i> Not detected</span>`;
+
+      // TAB 2: Architecture & Files
+      document.getElementById("archOverview").innerText = analysis.architecture?.overview || "No architecture data available.";
+
+      const patternsContainer = document.getElementById("designPatternsList");
+      patternsContainer.innerHTML = "";
+      (analysis.architecture?.design_patterns || []).forEach(p => {
+        const span = document.createElement("span");
+        span.className = "px-2.5 py-1 rounded-md text-xs bg-indigo-950/80 text-indigo-300 border border-indigo-700/60 font-medium";
+        span.innerText = p;
+        patternsContainer.appendChild(span);
+      });
+
+      const entryPointsContainer = document.getElementById("entryPointsList");
+      entryPointsContainer.innerHTML = "";
+      (analysis.architecture?.entry_points || []).forEach(ep => {
+        const div = document.createElement("div");
+        div.className = "p-2 rounded bg-gray-900 border border-gray-800 text-purple-300 flex items-center gap-2";
+        div.innerHTML = `<i class="fa-solid fa-file-code text-gray-500"></i> ${escapeHtml(ep)}`;
+        entryPointsContainer.appendChild(div);
+      });
+
+      // File Tree
+      allTreeFiles = data.tree_stats?.files || [];
+      document.getElementById("treeStatsBadge").innerText = `${allTreeFiles.length} key files indexed`;
+      renderTree(allTreeFiles);
+
+      // TAB 3: Quality & Security
+      renderList("strengthsList", analysis.quality_assessment?.strengths || [], "fa-solid fa-check text-emerald-400");
+      renderList("weaknessesList", analysis.quality_assessment?.weaknesses || [], "fa-solid fa-triangle-exclamation text-amber-400");
+      document.getElementById("testingObserved").innerText = analysis.quality_assessment?.testing_observed || "No test analysis available.";
+      document.getElementById("docsRatingBadge").innerText = analysis.quality_assessment?.documentation_quality || "Not rated";
+      renderList("securityList", analysis.security_and_maintenance?.security_considerations || [], "fa-solid fa-shield text-red-400");
+
+      // TAB 4: Setup & Quickstart
+      const prereqContainer = document.getElementById("prereqList");
+      prereqContainer.innerHTML = "";
+      (analysis.setup_and_quickstart?.prerequisites || []).forEach(pr => {
+        const span = document.createElement("span");
+        span.className = "px-2.5 py-1 rounded bg-gray-800 text-xs text-gray-300 border border-gray-700";
+        span.innerText = pr;
+        prereqContainer.appendChild(span);
+      });
+
+      const installContainer = document.getElementById("installStepsContainer");
+      installContainer.innerHTML = "";
+      (analysis.setup_and_quickstart?.install_steps || []).forEach((step, idx) => {
+        const div = document.createElement("div");
+        div.className = "bg-gray-900/90 p-3 rounded-lg border border-gray-800 font-mono text-xs text-gray-200 flex items-center justify-between";
+        div.innerHTML = `<span><span class="text-gray-500 mr-2">${idx + 1}.</span>${escapeHtml(step)}</span>
+                         <button onclick="copyToClipboard('${escapeJs(step)}')" class="text-gray-400 hover:text-white"><i class="fa-regular fa-copy"></i></button>`;
+        installContainer.appendChild(div);
+      });
+
+      document.getElementById("runCmdCode").innerText = analysis.setup_and_quickstart?.run_command || "npm start / python app.py";
+      document.getElementById("testCmdCode").innerText = analysis.setup_and_quickstart?.test_command || "npm test / pytest";
+
+      // Reset and prepare Chat
+      chatHistory = [];
+      clearChatUI();
+
+      // Generate Markdown Report
+      generateMarkdownReport(data);
+
+      // Switch to overview and show container
+      switchTab("overview");
+      document.getElementById("resultsContainer").classList.remove("hidden");
+      document.getElementById("resultsContainer").scrollIntoView({ behavior: "smooth" });
+    }
+
+    function renderTree(files) {
+      const container = document.getElementById("fileTreeContainer");
+      container.innerHTML = "";
+      if (!files.length) {
+        container.innerHTML = `<div class="text-gray-500 italic">No files matching filter</div>`;
+        return;
+      }
+      files.forEach(file => {
+        const div = document.createElement("div");
+        div.className = "py-0.5 flex items-center space-x-2 hover:bg-gray-900 px-1.5 rounded";
+        let icon = "fa-regular fa-file text-gray-500";
+        if (file.endsWith(".py")) icon = "fa-brands fa-python text-blue-400";
+        else if (file.endsWith(".js") || file.endsWith(".ts")) icon = "fa-brands fa-js text-yellow-400";
+        else if (file.endsWith(".json")) icon = "fa-solid fa-brackets-curly text-amber-400";
+        else if (file.endsWith(".md")) icon = "fa-solid fa-file-lines text-purple-400";
+        else if (file.includes("Dockerfile")) icon = "fa-brands fa-docker text-blue-300";
+
+        div.innerHTML = `<i class="${icon}"></i><span>${escapeHtml(file)}</span>`;
+        container.appendChild(div);
+      });
+    }
+
+    function filterTree(query) {
+      if (!query.trim()) {
+        renderTree(allTreeFiles);
+        return;
+      }
+      const q = query.toLowerCase();
+      const filtered = allTreeFiles.filter(f => f.toLowerCase().includes(q));
+      renderTree(filtered);
+    }
+
+    function renderList(elementId, items, iconClass) {
+      const container = document.getElementById(elementId);
+      container.innerHTML = "";
+      items.forEach(item => {
+        const li = document.createElement("li");
+        li.className = "flex items-start space-x-2";
+        li.innerHTML = `<i class="${iconClass} mt-1 text-xs"></i><span>${escapeHtml(item)}</span>`;
+        container.appendChild(li);
+      });
+    }
+
+    function renderLanguageChart(languagesData) {
+      const breakdown = (languagesData?.breakdown || []).slice(0, 5);
+      const canvas = document.getElementById("languageChart");
+      const listContainer = document.getElementById("languageList");
+      listContainer.innerHTML = "";
+
+      if (languageChartInstance) {
+        languageChartInstance.destroy();
+      }
+
+      if (!breakdown.length) {
+        listContainer.innerHTML = "<span class='text-gray-500'>No language distribution available</span>";
+        return;
+      }
+
+      const colors = ["#8b5cf6", "#3b82f6", "#10b981", "#f59e0b", "#ec4899", "#6b7280"];
+      const labels = breakdown.map(b => b.language);
+      const dataPoints = breakdown.map(b => b.percentage);
+
+      breakdown.forEach((b, idx) => {
+        const row = document.createElement("div");
+        row.className = "flex items-center justify-between text-gray-300";
+        row.innerHTML = `<div class="flex items-center space-x-2">
+                           <span class="w-2.5 h-2.5 rounded-full" style="background:${colors[idx % colors.length]}"></span>
+                           <span>${escapeHtml(b.language)}</span>
+                         </div>
+                         <span class="font-mono text-gray-400">${b.percentage}%</span>`;
+        listContainer.appendChild(row);
+      });
+
+      languageChartInstance = new Chart(canvas, {
+        type: "doughnut",
+        data: {
+          labels: labels,
+          datasets: [{
+            data: dataPoints,
+            backgroundColor: colors.slice(0, labels.length),
+            borderWidth: 0
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false }
+          },
+          cutout: "70%"
+        }
+      });
+    }
+
+    function switchTab(tabName) {
+      document.querySelectorAll(".tab-btn").forEach(btn => {
+        btn.classList.remove("border-purple-500", "text-purple-400");
+        btn.classList.add("border-transparent", "text-gray-400");
+      });
+      document.querySelectorAll(".tab-pane").forEach(pane => pane.classList.add("hidden"));
+
+      const activeBtn = document.getElementById(`tabBtn-${tabName}`);
+      const activePane = document.getElementById(`tabContent-${tabName}`);
+      if (activeBtn) {
+        activeBtn.classList.remove("border-transparent", "text-gray-400");
+        activeBtn.classList.add("border-purple-500", "text-purple-400");
+      }
+      if (activePane) {
+        activePane.classList.remove("hidden");
+      }
+    }
+
+    // Chat functionality
+    function clearChatUI() {
+      const container = document.getElementById("chatMessages");
+      container.innerHTML = `
+        <div class="flex items-start space-x-3">
+          <div class="h-8 w-8 rounded-full bg-purple-600/30 flex items-center justify-center text-purple-400 text-xs font-bold flex-shrink-0">
+            AI
+          </div>
+          <div class="bg-gray-800/80 border border-gray-700/60 rounded-2xl p-3.5 max-w-2xl text-gray-200 text-xs leading-relaxed">
+            Hello! I've loaded the entire repository context, file tree, and configuration manifests into Groq's high-speed memory. What would you like to know about this repository?
+          </div>
+        </div>
+      `;
+    }
+
+    function clearChat() {
+      chatHistory = [];
+      clearChatUI();
+    }
+
+    function sendQuickPrompt(text) {
+      document.getElementById("chatInput").value = text;
+      handleChatSubmit(new Event("submit"));
+    }
+
+    async function handleChatSubmit(e) {
+      e.preventDefault();
+      const input = document.getElementById("chatInput");
+      const question = input.value.trim();
+      if (!question || !currentAnalysisData) return;
+
+      input.value = "";
+      const container = document.getElementById("chatMessages");
+
+      // Append User message
+      const userDiv = document.createElement("div");
+      userDiv.className = "flex items-start space-x-3 justify-end";
+      userDiv.innerHTML = `
+        <div class="bg-purple-600 rounded-2xl p-3.5 max-w-2xl text-white text-xs leading-relaxed shadow-md">
+          ${escapeHtml(question)}
+        </div>
+        <div class="h-8 w-8 rounded-full bg-indigo-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+          You
+        </div>
+      `;
+      container.appendChild(userDiv);
+
+      chatHistory.push({ role: "user", content: question });
+
+      // AI Placeholder with spinner
+      const aiDiv = document.createElement("div");
+      aiDiv.className = "flex items-start space-x-3";
+      aiDiv.innerHTML = `
+        <div class="h-8 w-8 rounded-full bg-purple-600/30 flex items-center justify-center text-purple-400 text-xs font-bold flex-shrink-0">
+          AI
+        </div>
+        <div class="bg-gray-800/80 border border-gray-700/60 rounded-2xl p-3.5 max-w-2xl text-gray-300 text-xs leading-relaxed flex items-center space-x-2">
+          <i class="fa-solid fa-spinner fa-spin text-purple-400"></i>
+          <span>Thinking on Groq...</span>
+        </div>
+      `;
+      container.appendChild(aiDiv);
+      container.scrollTop = container.scrollHeight;
+
+      const groqKey = localStorage.getItem("groq_api_key") || "";
+      const model = document.getElementById("modelSelector").value;
+
+      try {
+        const res = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            repo_identifier: currentAnalysisData.repo_identifier,
+            messages: chatHistory,
+            groq_api_key: groqKey,
+            model: model
+          })
+        });
+
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || "Chat failed");
+
+        chatHistory.push({ role: "assistant", content: data.reply });
+
+        // Render Markdown reply
+        aiDiv.querySelector("div:last-child").className = "prose prose-invert bg-gray-800/80 border border-gray-700/60 rounded-2xl p-3.5 max-w-2xl text-gray-200 text-xs leading-relaxed";
+        aiDiv.querySelector("div:last-child").innerHTML = marked.parse(data.reply);
+
+      } catch (err) {
+        aiDiv.querySelector("div:last-child").innerHTML = `<span class="text-red-400"><i class="fa-solid fa-circle-exclamation mr-1"></i> ${escapeHtml(err.message)}</span>`;
+      }
+      container.scrollTop = container.scrollHeight;
+    }
+
+    // Markdown Report Generation
+    function generateMarkdownReport(data) {
+      const a = data.analysis;
+      const info = data.repo_info;
+      const md = `# GitHub Repository Analysis: ${info.full_name}
+
+**URL:** ${info.html_url}
+**Stars:** ${info.stars} | **Forks:** ${info.forks} | **Issues:** ${info.open_issues}
+**Primary Language:** ${info.language} | **License:** ${info.license}
+**Overall Health Score:** ${a.quality_assessment?.health_score}/100 (${a.quality_assessment?.health_verdict})
+
+---
+
+## 1. Executive Summary
+${a.executive_summary}
+
+- **Project Classification:** ${a.project_type}
+- **Tech Stack:** ${a.tech_stack?.join(", ")}
+
+### Core Features
+${(a.key_features || []).map(f => `- ${f}`).join("\n")}
+
+---
+
+## 2. Architecture & File Structure
+${a.architecture?.overview}
+
+### Key Entry Points
+${(a.architecture?.entry_points || []).map(ep => `- \`${ep}\``).join("\n")}
+
+### Design Patterns
+${(a.architecture?.design_patterns || []).map(dp => `- ${dp}`).join("\n")}
+
+---
+
+## 3. Code Quality & Security Audit
+- **Testing Assessment:** ${a.quality_assessment?.testing_observed}
+- **Documentation Quality:** ${a.quality_assessment?.documentation_quality}
+- **Maintenance Status:** ${a.security_and_maintenance?.maintenance_status}
+
+### Key Strengths
+${(a.quality_assessment?.strengths || []).map(s => `- [x] ${s}`).join("\n")}
+
+### Areas for Improvement
+${(a.quality_assessment?.weaknesses || []).map(w => `- [!] ${w}`).join("\n")}
+
+### Security Considerations
+${(a.security_and_maintenance?.security_considerations || []).map(sc => `- ${sc}`).join("\n")}
+
+---
+
+## 4. Setup & Quickstart Guide
+**Prerequisites:** ${a.setup_and_quickstart?.prerequisites?.join(", ")}
+
+**Install Commands:**
+\`\`\`bash
+${a.setup_and_quickstart?.install_steps?.join("\n")}
+\`\`\`
+
+**Run Command:**
+\`\`\`bash
+${a.setup_and_quickstart?.run_command}
+\`\`\`
+
+**Test Command:**
+\`\`\`bash
+${a.setup_and_quickstart?.test_command}
+\`\`\`
+
+---
+*Report generated by RepoScope AI powered by Groq LPUs (${a.model_used}).*
+`;
+      document.getElementById("markdownReportText").value = md;
+    }
+
+    function copyMarkdownReport() {
+      const text = document.getElementById("markdownReportText").value;
+      copyToClipboard(text);
+    }
+
+    function downloadMarkdownReport() {
+      const text = document.getElementById("markdownReportText").value;
+      const filename = `${currentAnalysisData?.repo_info?.name || "repo"}-analysis.md`;
+      downloadBlob(text, filename, "text/markdown");
+    }
+
+    function downloadJsonReport() {
+      const jsonStr = JSON.stringify(currentAnalysisData, null, 2);
+      const filename = `${currentAnalysisData?.repo_info?.name || "repo"}-analysis.json`;
+      downloadBlob(jsonStr, filename, "application/json");
+    }
+
+    function downloadBlob(content, filename, type) {
+      const blob = new Blob([content], { type });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    function copyToClipboard(text) {
+      navigator.clipboard.writeText(text).then(() => {
+        alert("Copied to clipboard!");
+      }).catch(() => {
+        const t = document.createElement("textarea");
+        t.value = text;
+        document.body.appendChild(t);
+        t.select();
+        document.execCommand("copy");
+        document.body.removeChild(t);
+        alert("Copied to clipboard!");
+      });
+    }
+
+    function escapeHtml(str) {
+      if (!str) return "";
+      return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+    function escapeJs(str) {
+      if (!str) return "";
+      return String(str).replace(/'/g, "\\'").replace(/"/g, '\\"');
+    }
+  </script>
+</body>
+</html>
